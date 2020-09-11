@@ -1,12 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
+	. "github.com/wilsonv244/API_3/config"
+	. "github.com/wilsonv244/API_3/dao"
+	. "github.com/wilsonv244/API_3/models"
+	"gopkg.in/mgo.v2/bson"
 )
+
+var config = Config{}
+var dao = MoviesDAO{}
 
 //GET
 //ENDPOINT: http:localhost:8080/movies
@@ -24,7 +32,18 @@ func findMovieEndPoint(w http.ResponseWriter, r *http.Request) {
 // POST
 // ENDPOINT: http:localhost:8080/movies
 func createMovieEndPoint(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Registra una película")
+	defer r.Body.Close()
+	var movie Movie
+	if err := json.NewDecoder(r.Body).Decode(&movie); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	movie.ID = bson.NewObjectId()
+	if err := dao.Insert(movie); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondWithJson(w, http.StatusCreated, movie)
 }
 
 // PUT
@@ -37,6 +56,24 @@ func updateMovieEndPoint(w http.ResponseWriter, r *http.Request) {
 // ENDPOINT: http:localhost:8080/movies/{id}
 func deleteMovieEndPoint(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Elimina una película segun id")
+}
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	respondWithJson(w, code, map[string]string{"error": msg})
+}
+
+func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
+	response, _ := json.Marshal(payload)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(response)
+}
+
+// Parse the configuration file 'config.toml', and establish a connection to DB
+func init() {
+	config.Read()
+	dao.Server = config.Server
+	dao.Database = config.Database
+	dao.Connect()
 }
 func main() {
 	r := mux.NewRouter()
